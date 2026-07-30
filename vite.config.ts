@@ -10,8 +10,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'icon-192.png', 'icon-512.png'],
       manifest: {
-        name: 'Flashcards ENEM',
-        short_name: 'Flashcards',
+        name: 'Cartões de Estudo',
+        short_name: 'Cartões',
         description: 'PWA de flashcards para estudar ENEM e concursos',
         theme_color: '#0f172a',
         background_color: '#0f172a',

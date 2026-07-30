@@ -1,5 +1,5 @@
 /**
- * Backend do Flashcards ENEM. Script vinculado (container-bound) à
+ * Backend do Cartões de Estudo. Script vinculado (container-bound) à
  * planilha "decks_app_flashcards".
  *
  * Cada aba da planilha é um deck (ex: "Engenharia de Software", "Banco de

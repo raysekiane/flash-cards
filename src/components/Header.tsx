@@ -19,7 +19,7 @@ export function Header({ currentPage, onNavigate, onSynced }: HeaderProps) {
     <header className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-center gap-4">
         <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-          Flashcards ENEM
+          Cartões de Estudo
         </h1>
         <nav className="flex gap-2">
           {NAV_ITEMS.map((item) => (
