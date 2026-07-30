@@ -31,7 +31,6 @@ const DECK_FIELD_HEADERS = {
 function doGet(e) {
   return handleRequest_(e, function (action) {
     if (action === 'getAll') return handleGetAll_();
-    if (action === 'fillMissingCardIds') return handleFillMissingCardIds_();
     return { success: false, error: 'Ação desconhecida: ' + action, type: 'bad_request' };
   });
 }
@@ -101,9 +100,18 @@ function getDeckSheets_() {
     });
 }
 
-function readDeckCards_(sheet) {
+/**
+ * Lê os cards de uma aba de deck e, quando encontra uma linha com
+ * pergunta/resposta mas sem CardId (ex: linha recém-digitada pelo usuário),
+ * gera um id (prefixo do nome do deck + sequencial, ex: ENG-006) e já
+ * escreve de volta na planilha. Assim um simples "Sincronizar" no app já
+ * resolve linhas novas, sem precisar de nenhuma ação manual separada.
+ */
+function readAndFillDeckCards_(sheet, deckName) {
+  const cards = [];
+  const errors = [];
   const values = sheet.getDataRange().getValues();
-  if (values.length < 2) return [];
+  if (values.length < 2) return { cards: cards, errors: errors };
 
   const headerIndex = {};
   values[0].forEach(function (header, i) {
@@ -115,74 +123,65 @@ function readDeckCards_(sheet) {
     });
   });
 
-  return values
-    .slice(1)
-    .filter(function (row) {
-      return row.some(function (cell) {
-        return cell !== '' && cell !== null;
-      });
-    })
-    .map(function (row) {
-      function get(field) {
-        return headerIndex[field] !== undefined ? row[headerIndex[field]] : '';
-      }
-      return {
-        cardId: String(get('cardId') || '').trim(),
-        pergunta: String(get('pergunta') || '').trim(),
-        resposta: String(get('resposta') || '').trim(),
-        explicacao: get('explicacao') ? String(get('explicacao')) : undefined,
-        categoria: get('categoria') ? String(get('categoria')) : undefined,
-      };
-    });
-}
-
-/**
- * Utilitário administrativo: preenche CardId vazio em cada aba de deck com
- * um id gerado (prefixo do nome do deck + sequencial), ex: ENG-001. Só
- * escreve em células vazias — chamar de novo não duplica nem sobrescreve
- * ids já preenchidos, então é seguro rodar mais de uma vez.
- * Uso: GET ?action=fillMissingCardIds&key=...
- */
-function handleFillMissingCardIds_() {
-  const filled = [];
-
-  getDeckSheets_().forEach(function (sheet) {
-    const deckName = sheet.getName();
-    const values = sheet.getDataRange().getValues();
-    if (values.length < 2) return;
-
-    let cardIdCol = -1;
-    values[0].forEach(function (header, i) {
-      if (normalize_(header) === 'cardid') cardIdCol = i;
-    });
-    if (cardIdCol === -1) return;
-
-    const prefix = buildDeckPrefix_(deckName);
-    let counter = 1;
+  const prefix = buildDeckPrefix_(deckName);
+  let counter = 1;
+  if (headerIndex.cardId !== undefined) {
     for (let r = 1; r < values.length; r++) {
-      const existing = String(values[r][cardIdCol] || '').trim();
+      const existing = String(values[r][headerIndex.cardId] || '').trim();
       const match = existing.match(new RegExp('^' + prefix + '-(\\d+)$'));
       if (match) counter = Math.max(counter, Number(match[1]) + 1);
     }
+  }
 
-    for (let r = 1; r < values.length; r++) {
-      const row = values[r];
-      const hasContent = row.some(function (cell) {
-        return cell !== '' && cell !== null;
-      });
-      if (!hasContent) continue;
+  for (let r = 1; r < values.length; r++) {
+    const row = values[r];
+    const hasContent = row.some(function (cell) {
+      return cell !== '' && cell !== null;
+    });
+    if (!hasContent) continue;
 
-      const existing = String(row[cardIdCol] || '').trim();
-      if (existing) continue;
-
-      const cardId = prefix + '-' + String(counter).padStart(3, '0');
-      counter++;
-      sheet.getRange(r + 1, cardIdCol + 1).setValue(cardId);
-      filled.push({ deck: deckName, row: r + 1, cardId: cardId });
+    function get(field) {
+      return headerIndex[field] !== undefined ? row[headerIndex[field]] : '';
     }
-  });
 
-  return { success: true, filled: filled, count: filled.length };
+    const pergunta = String(get('pergunta') || '').trim();
+    const resposta = String(get('resposta') || '').trim();
+    let cardId = String(get('cardId') || '').trim();
+
+    if (!pergunta || !resposta) {
+      errors.push({
+        cardId: cardId || undefined,
+        field: !pergunta ? 'pergunta' : 'resposta',
+        message: 'Campo obrigatório ausente no deck "' + deckName + '" (linha ' + (r + 1) + ')',
+      });
+      continue;
+    }
+
+    if (!cardId && headerIndex.cardId !== undefined) {
+      cardId = prefix + '-' + String(counter).padStart(3, '0');
+      counter++;
+      sheet.getRange(r + 1, headerIndex.cardId + 1).setValue(cardId);
+    }
+
+    if (!cardId) {
+      errors.push({
+        field: 'cardId',
+        message: 'Deck "' + deckName + '" não tem coluna CardId (linha ' + (r + 1) + ')',
+      });
+      continue;
+    }
+
+    cards.push({
+      cardId: cardId,
+      deckName: deckName,
+      pergunta: pergunta,
+      resposta: resposta,
+      explicacao: get('explicacao') ? String(get('explicacao')) : undefined,
+      categoria: get('categoria') ? String(get('categoria')) : undefined,
+    });
+  }
+
+  return { cards: cards, errors: errors };
 }
 
 function buildDeckPrefix_(deckName) {
@@ -196,24 +195,9 @@ function handleGetAll_() {
 
   getDeckSheets_().forEach(function (sheet) {
     const deckName = sheet.getName();
-    readDeckCards_(sheet).forEach(function (card) {
-      if (!card.cardId || !card.pergunta || !card.resposta) {
-        errors.push({
-          cardId: card.cardId || undefined,
-          field: !card.cardId ? 'cardId' : !card.pergunta ? 'pergunta' : 'resposta',
-          message: 'Campo obrigatório ausente no deck "' + deckName + '" (linha ' + (card.cardId || '(sem id)') + ')',
-        });
-        return;
-      }
-      flashcards.push({
-        cardId: card.cardId,
-        deckName: deckName,
-        pergunta: card.pergunta,
-        resposta: card.resposta,
-        explicacao: card.explicacao,
-        categoria: card.categoria,
-      });
-    });
+    const result = readAndFillDeckCards_(sheet, deckName);
+    Array.prototype.push.apply(flashcards, result.cards);
+    Array.prototype.push.apply(errors, result.errors);
   });
 
   const deckTotals = {};

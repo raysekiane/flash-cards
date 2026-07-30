@@ -16,6 +16,12 @@ Software`, `Banco de Dados`, `Legislação`, `Português`.
 As abas **Progresso** e **Metadata** são reservadas — o script cria e
 preenche sozinho na primeira chamada, não precisa criar na mão.
 
+**CardId é opcional ao digitar.** Se você adicionar uma linha nova com só
+Pergunta/Resposta preenchidos e deixar CardId em branco, o próprio
+`getAll` gera um id automaticamente (prefixo do nome do deck + sequencial,
+ex: `ENG-006`) na primeira sincronização depois de você adicionar a linha
+— não precisa preencher isso na mão nem rodar nada separado.
+
 ## 2. Colar o script
 
 Na planilha: **Extensões > Apps Script**. Apague o conteúdo padrão de
