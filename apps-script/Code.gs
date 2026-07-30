@@ -31,6 +31,7 @@ const DECK_FIELD_HEADERS = {
 function doGet(e) {
   return handleRequest_(e, function (action) {
     if (action === 'getAll') return handleGetAll_();
+    if (action === 'fillMissingCardIds') return handleFillMissingCardIds_();
     return { success: false, error: 'Ação desconhecida: ' + action, type: 'bad_request' };
   });
 }
@@ -133,6 +134,60 @@ function readDeckCards_(sheet) {
         categoria: get('categoria') ? String(get('categoria')) : undefined,
       };
     });
+}
+
+/**
+ * Utilitário administrativo: preenche CardId vazio em cada aba de deck com
+ * um id gerado (prefixo do nome do deck + sequencial), ex: ENG-001. Só
+ * escreve em células vazias — chamar de novo não duplica nem sobrescreve
+ * ids já preenchidos, então é seguro rodar mais de uma vez.
+ * Uso: GET ?action=fillMissingCardIds&key=...
+ */
+function handleFillMissingCardIds_() {
+  const filled = [];
+
+  getDeckSheets_().forEach(function (sheet) {
+    const deckName = sheet.getName();
+    const values = sheet.getDataRange().getValues();
+    if (values.length < 2) return;
+
+    let cardIdCol = -1;
+    values[0].forEach(function (header, i) {
+      if (normalize_(header) === 'cardid') cardIdCol = i;
+    });
+    if (cardIdCol === -1) return;
+
+    const prefix = buildDeckPrefix_(deckName);
+    let counter = 1;
+    for (let r = 1; r < values.length; r++) {
+      const existing = String(values[r][cardIdCol] || '').trim();
+      const match = existing.match(new RegExp('^' + prefix + '-(\\d+)$'));
+      if (match) counter = Math.max(counter, Number(match[1]) + 1);
+    }
+
+    for (let r = 1; r < values.length; r++) {
+      const row = values[r];
+      const hasContent = row.some(function (cell) {
+        return cell !== '' && cell !== null;
+      });
+      if (!hasContent) continue;
+
+      const existing = String(row[cardIdCol] || '').trim();
+      if (existing) continue;
+
+      const cardId = prefix + '-' + String(counter).padStart(3, '0');
+      counter++;
+      sheet.getRange(r + 1, cardIdCol + 1).setValue(cardId);
+      filled.push({ deck: deckName, row: r + 1, cardId: cardId });
+    }
+  });
+
+  return { success: true, filled: filled, count: filled.length };
+}
+
+function buildDeckPrefix_(deckName) {
+  const letters = normalize_(deckName).replace(/[^a-z]/g, '');
+  return (letters.slice(0, 3) || 'dck').toUpperCase();
 }
 
 function handleGetAll_() {
