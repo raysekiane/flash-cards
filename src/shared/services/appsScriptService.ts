@@ -44,14 +44,17 @@ function assertConfigured(): void {
   }
 }
 
+// Apps Script Web Apps não expõem os headers da requisição HTTP para o
+// script (doGet/doPost só recebem e.parameter), e um header custom como
+// X-App-Key força o navegador a mandar um preflight OPTIONS que o Apps
+// Script não responde. Por isso a chave viaja como query param, e o POST
+// usa text/plain (content-type "simples") para não disparar preflight.
+
 export async function getAll(): Promise<AppScriptResponse<GetAllData>> {
   assertConfigured();
 
-  const response = await fetch(`${APPS_SCRIPT_URL}?action=getAll`, {
-    headers: {
-      'X-App-Key': APP_KEY as string,
-    },
-  });
+  const url = `${APPS_SCRIPT_URL}?action=getAll&key=${encodeURIComponent(APP_KEY as string)}`;
+  const response = await fetch(url);
 
   if (!response.ok) {
     throw new Error('Falha ao sincronizar com servidor');
@@ -77,11 +80,11 @@ export async function saveProgress(
 ): Promise<AppScriptResponse> {
   assertConfigured();
 
-  const response = await fetch(`${APPS_SCRIPT_URL}?action=saveProgress`, {
+  const url = `${APPS_SCRIPT_URL}?action=saveProgress&key=${encodeURIComponent(APP_KEY as string)}`;
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'X-App-Key': APP_KEY as string,
+      'Content-Type': 'text/plain;charset=utf-8',
     },
     body: JSON.stringify(payload),
   });
